@@ -3,6 +3,8 @@ use std::path::Path;
 use std::env;
 use std::process::exit;
 
+use pretty_hex::*;
+
 macro_rules! printreg {
 	($img:expr, $offset:expr) => {
 		println!("0x{:02X}: 0x{:02X}", $offset, $img[$offset])
@@ -15,6 +17,35 @@ macro_rules! printreg {
 	};
 }
 
+macro_rules! printbit {
+	($val:expr, $bit:expr) => {
+		println!("\t{}: {}", $bit, ($val >> $bit) & 1);
+	};
+	($val:expr, $bit:expr, $desc:expr) => {
+		println!("\t{}: {}: {}", $bit, $desc, ($val >> $bit) & 1);
+	};
+	($val:expr, $bit:expr, $($desc:tt)*) => {
+		println!("\t{}: {}: {}", $bit, format!($($desc)*), ($val >> $bit) & 1);
+	};
+}
+fn print_led_control(val: u8) {
+	match val & 0b1111 {
+		0b0000 => println!("\t\tLink/Activity (default for LED2): b0000"),
+		0b0001 => println!("\t\tLink1000/Activity (default for LED0): b0001"),
+		0b0010 => println!("\t\tLink100/Activity (default for LED1): b0010"),
+		0b0011 => println!("\t\tLink10/Activity: b0011"),
+		0b0100 => println!("\t\tLink100/1000/Activity: b0100"),
+		0b0101 => println!("\t\tLink10/1000/Activity: b0101"),
+		0b0110 => println!("\t\tLink10/100/Activity: b0110"),
+		0b1000 => println!("\t\tDuplex/Collision (default for LED3): b1000"),
+		0b1001 => println!("\t\tCollision: b1001"),
+		0b1010 => println!("\t\tActivity: b1010"),
+		0b1100 => println!("\t\tAuto-negotiation Fault: b1100"),
+		0b1110 => println!("\t\tForce LED Off (suppresses LED blink after reset/coma): b1110"),
+		0b1111 => println!("\t\tForce LED On (suppresses LED blink after reset/coma): b1111"),
+		_ => println!("\t\tRESERVED: b{:04b}", val & 0b1111)
+	}
+}
 fn main() {
 	let args: Vec<String> = env::args().collect();
 	if args.len() != 2 {
@@ -129,4 +160,63 @@ fn main() {
 	printreg!(img, 0x5e, "RESERVED (0x??)");
 	printreg!(img, 0x5f, "RESERVED (0x??)");
 	printreg!(img, 0x61, "RESERVED (0x??)");
+
+	println!("\n0x01 - 0x06 MAC Address:");
+	println!("\t{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+	         img[0x01], img[0x02], img[0x03], img[0x04], img[0x05], img[0x06]);
+
+	println!("\n0x07 GPIO Wake:");
+	for i in 0..8 {
+		printbit!(img[0x07], 7-i, "GPIOWK{}", 7-i);
+	}
+
+	println!("\n0x09 GPIO PME Flags 0: 0x{:02X}", img[0x09]);
+	printbit!(img[0x09], 7, "GPIO PME Enable");
+	printbit!(img[0x09], 6, "GPIO PME Configuration");
+	printbit!(img[0x09], 5, "GPIO PME Length");
+	printbit!(img[0x09], 4, "GPIO PME Polarity");
+	printbit!(img[0x09], 3, "GPIO PME Buffer Type");
+	printbit!(img[0x09], 2, "PHY Link Change Enable");
+	printbit!(img[0x09], 1, "PME Packet Enable");
+	printbit!(img[0x09], 0, "PME Perfect DA Enable");
+
+	println!("\n0x0A GPIO PME Flags 1: 0x{:02X}", img[0x0a]);
+	println!("\t7-2: RESERVED: b{:06b}", img[0x0a] >> 2);
+	printbit!(img[0x0a], 1, "PME Broadcast Packet Enabl");
+	printbit!(img[0x0a], 0, "PME WUFF Enable");
+
+	println!("\n0x0B LED Configuration 0: 0x{:02X}", img[0x0b]);
+	printbit!(img[0x0b], 3, "LED3 Enable (LED3_EN)");
+	printbit!(img[0x0b], 2, "LED2 Enable (LED2_EN)");
+	printbit!(img[0x0b], 1, "LED1 Enable (LED1_EN)");
+	printbit!(img[0x0b], 0, "LED0 Enable (LED0_EN)");
+
+	println!("\n0x0B LED Configuration 1: 0x{:02X}", img[0x0c]);
+	println!("\tLED1 Control: b{:04b}", (img[0x0c] >> 4) & 0b1111);
+	print_led_control((img[0x0c] >> 4) & 0b1111);
+	println!("\tLED0 Control: b{:04b}", img[0x0c] & 0b1111);
+	print_led_control(img[0x0c] & 0b1111);
+
+	println!("\n0x0D LED Configuration 2: 0x{:02X}", img[0x0d]);
+	println!("\tLED3 Control: b{:04b}", (img[0x0d] >> 4) & 0b1111);
+	print_led_control((img[0x0d] >> 4) & 0b1111);
+	println!("\tLED2 Control: b{:04b}", img[0x0d] & 0b1111);
+	print_led_control(img[0x0d] & 0b1111);
+
+
+	println!("\n0x25 Manufacturer ID String Descriptor Length (bytes): 0x{:02X}", img[0x25]);
+	println!("\n0x26 Manufacturer ID String Descriptor EEPROM Word Offset: 0x{:02X}", img[0x26]);
+	simple_hex(&img);
+	let offset: usize = (img[0x26] * 2).into();
+	let size: usize = img[0x25].into();
+	if img[0x25] != img[offset] {
+		eprintln!("\tERROR: Length @0x{:02X}=0x{:02X} and bLength @0x{:02X}=0x{:02X} differ!",
+		          0x25, img[0x25], offset, img[offset]);
+	}
+	let manu = &img[(offset + 2)..(offset + size)];
+	println!("\t{}", manu.hex_dump());
+	if img[offset + 1] == 0x03 {
+		let x = String::from_utf8_lossy(manu);
+		println!("\t'{}'", x);
+	}
 }
