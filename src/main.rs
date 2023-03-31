@@ -66,11 +66,11 @@ fn main() {
 	}
 
 	printreg!(img, 0x01, "MAC Address [7:0]");
-	printreg!(img, 0x01, "MAC Address [15:8]");
-	printreg!(img, 0x01, "MAC Address [23:16]");
-	printreg!(img, 0x01, "MAC Address [31:24]");
-	printreg!(img, 0x01, "MAC Address [39:32]");
-	printreg!(img, 0x01, "MAC Address [47:40]");
+	printreg!(img, 0x02, "MAC Address [15:8]");
+	printreg!(img, 0x03, "MAC Address [23:16]");
+	printreg!(img, 0x04, "MAC Address [31:24]");
+	printreg!(img, 0x05, "MAC Address [39:32]");
+	printreg!(img, 0x06, "MAC Address [47:40]");
 	printreg!(img, 0x07, "Wakeup Enables");
 	printreg!(img, 0x08, "RESERVED (0x00)");
 	printreg!(img, 0x09, "GPIO PME Flags 0");
